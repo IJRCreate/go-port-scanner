@@ -17,11 +17,13 @@ type testData struct {
 }
 
 var passingTests = []testData{
-	{host: "127.0.0.1", ports: []string{"8000"}, expected: []string{"TCP Open"}},
+	{host: "127.0.0.1", ports: []string{"8000", "8001", "8002"}, expected: []string{"TCP Open", "TCP Open", "TCP Open"}},
+	{host: "127.0.0.1", ports: []string{"8003", "8004", "8005"}, expected: []string{"TCP Open", "TCP Open", "TCP Open"}},
 }
 
 var failingTests = []testData{
-	{host: "127.0.0.1", ports: []string{"8001"}, expected: []string{"TCP Closed"}},
+	{host: "127.0.0.1", ports: []string{"8006", "8007", "8008"}, expected: []string{"TCP Closed", "TCP Closed", "TCP Closed"}},
+	{host: "127.0.0.1", ports: []string{"8009", "8010", "8011"}, expected: []string{"TCP Closed", "TCP Closed", "TCP Closed"}},
 }
 
 func openPort(port string) *exec.Cmd {
@@ -34,7 +36,7 @@ func openPort(port string) *exec.Cmd {
 		log.Fatal(err)
 	}
 	// Required to allow netcat to start in time
-	time.Sleep(5 * time.Millisecond)
+	time.Sleep(100 * time.Millisecond)
 	/* err = echo.Run()
 	if err != nil {
 		log.Fatal(err)
@@ -48,50 +50,83 @@ func closePort(netcat *exec.Cmd) {
 
 func TestConnectionScan(t *testing.T) {
 
-	for _, test := range passingTests {
-
-		listener := openPort(test.ports[0])
-
-		actual := strings.TrimSpace(connectionScan(test.host, test.ports[0]))
-		if actual != test.expected[0] {
-			t.Errorf("Expected: %s; Actual: %s", test.expected, actual)
-		}
-
-		closePort(listener)
+	test := passingTests[0]
+	listener := openPort(test.ports[0])
+	actual := strings.TrimSpace(connectionScan(test.host, test.ports[0]))
+	if actual != test.expected[0] {
+		t.Errorf("Expected: %s; Actual: %s", test.expected[0], actual)
 	}
+	closePort(listener)
 
-	for _, test := range failingTests {
-		actual := strings.TrimSpace(connectionScan(test.host, test.ports[0]))
-		if actual != test.expected[0] {
-			t.Errorf("Expected: %s; Actual: %s", test.expected, actual)
-		}
+	test = failingTests[0]
+	actual = strings.TrimSpace(connectionScan(test.host, test.ports[0]))
+	if actual != test.expected[0] {
+		t.Errorf("Expected: %s; Actual: %s", test.expected[0], actual)
 	}
-
 }
 
-func TestPortScan(t *testing.T) {
+func TestOneHostOnePortPortScan(t *testing.T) {
+
+	test := passingTests[0]
+	var actual []string
+	port := test.ports[0]
+	listener := openPort(port)
+	actual = portScan(test.host, []string{port})
+	closePort(listener)
+	if !slices.Equal(actual, []string{test.expected[0]}) {
+		t.Errorf("Expected: %s; Actual: %s", []string{test.expected[0]}, actual)
+	}
+
+	test = failingTests[0]
+	port = test.ports[0]
+	actual = portScan(test.host, []string{port})
+	if !slices.Equal(actual, []string{test.expected[0]}) {
+		t.Errorf("Expected: %s; Actual: %s", []string{test.expected[0]}, actual)
+	}
+}
+
+func TestOneHostMultiplePortScans(t *testing.T) {
+
+	test := passingTests[0]
+	var actual []string
+	listeners := make([]*exec.Cmd, len(test.ports))
+	for i, port := range test.ports {
+		listeners[i] = openPort(port)
+	}
+	actual = portScan(test.host, test.ports)
+	for _, listener := range listeners {
+		closePort(listener)
+	}
+	if !slices.Equal(actual, test.expected) {
+		t.Errorf("Expected: %s; Actual: %s", test.expected, actual)
+	}
+
+	test = failingTests[0]
+	actual = portScan(test.host, test.ports)
+	if !slices.Equal(actual, test.expected) {
+		t.Errorf("Expected: %s; Actual: %s", test.expected, actual)
+	}
+}
+
+func TestMultipleHostsMultiplePortScans(t *testing.T) {
+
 	for _, test := range passingTests {
 		var actual []string
 		listeners := make([]*exec.Cmd, len(test.ports))
 		for i, port := range test.ports {
 			listeners[i] = openPort(port)
 		}
-
 		actual = portScan(test.host, test.ports)
-
-		if !slices.Equal(actual, test.expected) {
-			t.Errorf("Expected: %s; Actual: %s", test.expected, actual)
-		}
-
 		for _, listener := range listeners {
 			closePort(listener)
 		}
-
+		if !slices.Equal(actual, test.expected) {
+			t.Errorf("Expected: %s; Actual: %s", test.expected, actual)
+		}
 	}
 
 	for _, test := range failingTests {
-		var actual []string
-		actual = portScan(test.host, test.ports)
+		actual := portScan(test.host, test.ports)
 		if !slices.Equal(actual, test.expected) {
 			t.Errorf("Expected: %s; Actual: %s", test.expected, actual)
 		}

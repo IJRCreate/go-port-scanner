@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"log"
 	"net"
+	"strings"
 )
 
 var targetHost string
@@ -22,11 +23,28 @@ func main() {
 	if targetHost == "" || targetPort == "" {
 		flag.Usage()
 	}
-	fmt.Println(connectionScan(targetHost, targetPort))
+	targetPorts := strings.Split(targetPort, ",")
+	results := portScan(targetHost, targetPorts)
+	for _, result := range results {
+		fmt.Println(result)
+	}
 }
 
-// TODO move hostname & address checks from connectionScan to portScan
 func portScan(host string, ports []string) []string {
+
+	targetIP, err := net.LookupHost(host)
+	if err != nil {
+		fmt.Printf("[-] Cannot resolve '%s': Unknown host\n", host)
+		log.Fatal(err)
+	}
+
+	targetName, err := net.LookupAddr(targetIP[0])
+	if err != nil {
+		fmt.Printf("[+] Scan Results for: %s\n", targetIP[0])
+	} else {
+		fmt.Printf("[+] Scan Results for: %s\n", targetName[0])
+	}
+
 	results := make([]string, len(ports))
 	for i, port := range ports {
 		results[i] = connectionScan(host, port)
@@ -36,19 +54,11 @@ func portScan(host string, ports []string) []string {
 
 func connectionScan(host string, port string) string {
 
-	var targetHost string
-	ipAddress, err := net.LookupHost(host)
-	if err != nil {
-		// TODO iterate through all returned ip Addresses
-		targetHost = ipAddress[0]
-	} else {
-		fmt.Printf("Cannot resolve '%s': Unknown host\n", host)
-		targetHost = host
-	}
+	targetHost := host
 	targetPort := port
 	target := fmt.Sprintf("%s:%s", targetHost, targetPort)
 
-	_, err = net.Dial("tcp", target)
+	_, err := net.Dial("tcp", target)
 	if err != nil {
 		return "TCP Closed"
 	} else {
